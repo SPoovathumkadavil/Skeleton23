@@ -1,31 +1,34 @@
 package frc.robot.subsystem;
 
-import com.ctre.phoenix.motorcontrol.SupplyCurrentLimitConfiguration;
-import edu.wpi.first.math.controller.PIDController;
-import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
-import edu.wpi.first.math.kinematics.*;
-import edu.wpi.first.util.sendable.SendableBuilder;
-import edu.wpi.first.wpilibj.I2C;
-import edu.wpi.first.wpilibj.Joystick;
-import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj2.command.CommandBase;
+import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Constants.SwerveConstants;
 import frc.robot.component.AngleComponent;
 import frc.robot.component.AngularVelocityComponent;
-import frc.robot.component.GyroComponent;
-import frc.robot.component.hardware.AHRSAngleGetterComponent;
 import frc.robot.component.hardware.TalonFXComponent;
-import frc.robot.utility.ControllerInfo;
-
+import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import static frc.robot.utility.ExtendedMath.getShortestRadianToTarget;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.wpilibj2.command.Subsystem;
+import edu.wpi.first.util.sendable.Sendable;
+import frc.robot.component.GyroComponent;
+import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
+import edu.wpi.first.wpilibj.Timer;
+import frc.robot.Constants.SwerveConstants;
+import com.ctre.phoenix.motorcontrol.SupplyCurrentLimitConfiguration;
+import frc.robot.component.hardware.AHRSAngleGetterComponent;
+import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj2.command.CommandBase;
+import edu.wpi.first.wpilibj.Joystick;
+import frc.robot.utility.ControllerInfo;
+import edu.wpi.first.math.controller.PIDController;
+import frc.robot.dashboard.DashboardMessageDisplay;
 
-/**
- * Swerve Drive {Make sure to change Constants and add docs}
- */
-public class Swerve {
+public class DriveTrain {
 
     /* Constants for Factory, Change in Constants File */
     private static final double DRIVE_RATIO = SwerveConstants.DRIVE_RATIO; //drive rotations per motor rotation
@@ -46,10 +49,12 @@ public class Swerve {
     private static final double DRIVE_X_TRANSLATION = SwerveConstants.DRIVE_X_TRANSLATION; //lwft right translation of wheels
     private static double DRIVE_Y_FRONT_TRANSLATION = SwerveConstants.DRIVE_Y_FRONT_TRANSLATION;
     private static double DRIVE_Y_BACK_TRANSLATION = SwerveConstants.DRIVE_Y_BACK_TRANSLATION;
+    
+    /* God, please forgive me */
 
-
-    /* Wheel Modules */
-    /* Application to Kinematic */
+    /**
+     * DOCUMENTATION
+     */
     public static class KinematicWheelModule extends SubsystemBase {
         protected AngleComponent angleComponent;
         protected double angleRotsPerMotorRots;
@@ -58,6 +63,7 @@ public class Swerve {
         protected Translation2d translationFromSwerveCenter;
         protected double maxSurfaceSpeed;
         protected double wheelDiameter;
+
         public KinematicWheelModule(AngleComponent angleComponent, AngularVelocityComponent angularVelocityComponent, Translation2d translationFromSwerveCenter, double maxSurfaceSpeed, double wheelDiameter, double angleRotsPerMotorRots, double driveRotsPerMotorRots) {
             this.angleComponent = angleComponent;
             this.angularVelocityComponent = angularVelocityComponent;
@@ -67,14 +73,14 @@ public class Swerve {
             this.angleRotsPerMotorRots = angleRotsPerMotorRots;
             this.driveRotsPerMotorRots = driveRotsPerMotorRots;
         }
-        public void drive(SwerveModuleState state) {
+        public void drive(SwerveModuleState state){
             angleComponent.setAngle(state.angle.getRadians() / angleRotsPerMotorRots);
             angularVelocityComponent.setAngularVelocity(state.speedMetersPerSecond / (wheelDiameter * Math.PI) * 2 * Math.PI / driveRotsPerMotorRots);
         }
-        public Translation2d getTranslationFromSwerveCenter() {
+        public Translation2d getTranslationFromSwerveCenter(){
             return translationFromSwerveCenter;
         }
-
+    
         public double getMaxSurfaceSpeed() {
             return maxSurfaceSpeed;
         }
@@ -82,12 +88,14 @@ public class Swerve {
         public void periodic() {
             // This method will be called once per scheduler run
         }
-        public SwerveModuleState getState() {
+        public SwerveModuleState getState(){
             return new SwerveModuleState(angularVelocityComponent.getAngularVelocity(), new Rotation2d(angleComponent.getAngle()));
         }
     }
-    
-    /* Application to Odemetric */
+
+    /**
+     * DOCUMENTATION
+     */
     public static class OdometricWheelModule extends KinematicWheelModule {
         protected TalonFXComponent driveMotor;
         protected TalonFXComponent angleMotor;
@@ -151,12 +159,41 @@ public class Swerve {
             }
             super.drive(state);
         }
-        public void coast() {
+        public void coast(){
             driveMotor.setOutput(0);
         }
     }
 
-    public static class KinematicSwerve extends SubsystemBase {
+    public interface Swerve extends Subsystem, Sendable {
+        void moveRobotCentric( double ySpeed, double xSpeed, double wSpeed );
+        void moveRobotCentric(ChassisSpeeds chassisSpeeds);
+        void moveRobotCentric(ChassisSpeeds chassisSpeeds, Translation2d centerOfRotation);
+        void moveAngleCentric(double ySpeed, double xSpeed, double wSpeed, Rotation2d robotAngle);
+        void moveFieldCentric(ChassisSpeeds chassisSpeeds);
+        void moveFieldCentric(double xSpeed, double ySpeed, double wSpeed);
+        void moveFieldCentric(double xSpeed, double ySpeed, double wSpeed, Translation2d centerOfRotation);
+        ChassisSpeeds getSpeeds();
+        void resetRobotAngle();
+        void resetRobotAngle(double offset);
+        double getRobotAngle();
+        void driveByStates(SwerveModuleState[] states);
+        SwerveDriveKinematics getKinematics();
+    
+    }
+
+    /* This makes me mad */
+    /**
+     * DOCUMENTATION
+     */
+    public interface PathFollowingSwerve extends Swerve {
+        public Pose2d getCurrentPose();
+        public void resetPose();
+        public void resetPose(Translation2d translation);
+        public void resetPose(Pose2d pose);
+    }
+
+    /* Kinematic, Why tho? */
+    public static class KinematicSwerve extends SubsystemBase implements Swerve {
 
         protected SwerveDriveKinematics kinematics;
         protected KinematicWheelModule[] wheelModules;
@@ -242,7 +279,7 @@ public class Swerve {
         public void moveAngleCentric(double xSpeed, double ySpeed, double wSpeed, Rotation2d robotAngle){
             moveAngleCentric(xSpeed, ySpeed, wSpeed, robotAngle, new Translation2d());
         }
-        public void moveAngleCentric(double xSpeed, double ySpeed, double wSpeed, Rotation2d robotAngle, Translation2d centerOfRotation) {
+        public void moveAngleCentric(double xSpeed, double ySpeed, double wSpeed, Rotation2d robotAngle, Translation2d centerOfRotation){
             var chassisSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(xSpeed, ySpeed, wSpeed, robotAngle);
             moveRobotCentric(chassisSpeeds, centerOfRotation);
         }
@@ -316,7 +353,10 @@ public class Swerve {
         }
     }
 
-    public static class OdometricSwerve extends KinematicSwerve {
+    /**
+     * Add your docs here.
+     */
+    public static class OdometricSwerve extends KinematicSwerve implements PathFollowingSwerve  {
 
         SwerveDriveOdometry odometry;
         OdometricWheelModule[] odometricWheelModules;
@@ -334,9 +374,9 @@ public class Swerve {
         }
 
         /**
-        * Currently Out of Use, using getSwerveModulePositions() instead :) 
-        */
-        private SwerveModuleState[] getSwerveModuleStates() {
+         * @deprecated Used for 2022 season and below
+         */
+        private SwerveModuleState[] getSwerveModuleStates(){
             var states = new SwerveModuleState[wheelModules.length];
             for(int i = 0;i<states.length;i++){
                 states[i] = odometricWheelModules[i].getState();
@@ -351,7 +391,7 @@ public class Swerve {
             }
             return positions;
         }
-    
+
         public Pose2d getCurrentPose(){
             return odometry.getPoseMeters();
         }
@@ -389,10 +429,6 @@ public class Swerve {
             }
         }
 
-        public void balance() {
-            
-        }
-    
         @Override
         public void initSendable(SendableBuilder builder) {
             super.initSendable(builder);
@@ -400,9 +436,24 @@ public class Swerve {
             builder.addDoubleProperty("Odometric X", () -> getCurrentPose().getX(), null);
             builder.addDoubleProperty("Odometric Y", () -> getCurrentPose().getY(), null);
         }
-    
+
     }
-    
+
+    public static PathFollowingSwerve makeSwerve(){
+        OdometricWheelModule fl = makeWheelModule(AFLPORT, DFLPORT, new Translation2d(DRIVE_Y_FRONT_TRANSLATION, DRIVE_X_TRANSLATION), true, true,true, .4, .75);
+        OdometricWheelModule fr = makeWheelModule(AFRPORT, DFRPORT, new Translation2d(DRIVE_Y_FRONT_TRANSLATION, -DRIVE_X_TRANSLATION), true, true,false, .75, .75);
+        OdometricWheelModule bl = makeWheelModule(ABLPORT, DBLPORT, new Translation2d(-DRIVE_Y_BACK_TRANSLATION, DRIVE_X_TRANSLATION), false, true,true, .9, .8);
+        OdometricWheelModule br = makeWheelModule(ABRPORT, DBRPORT, new Translation2d(-DRIVE_Y_BACK_TRANSLATION, -DRIVE_X_TRANSLATION ), true, true,false, .6, .8);
+
+        return new OdometricSwerve(
+                new AHRSAngleGetterComponent(I2C.Port.kMXP),
+                fl,
+                fr,
+                bl,
+                br
+        );
+    }
+
     /**
      * 
      * @param angleId
@@ -445,25 +496,14 @@ public class Swerve {
                 DRIVE_RATIO);
     }
 
-    public static OdometricSwerve makeSwerve() {
-        OdometricWheelModule fl = makeWheelModule(AFLPORT, DFLPORT, new Translation2d(DRIVE_Y_FRONT_TRANSLATION, DRIVE_X_TRANSLATION), true, true,true, .4, .75);
-        OdometricWheelModule fr = makeWheelModule(AFRPORT, DFRPORT, new Translation2d(DRIVE_Y_FRONT_TRANSLATION, -DRIVE_X_TRANSLATION), true, true,false, .75, .75);
-        OdometricWheelModule bl = makeWheelModule(ABLPORT, DBLPORT, new Translation2d(-DRIVE_Y_BACK_TRANSLATION, DRIVE_X_TRANSLATION), false, true,true, .9, .8);
-        OdometricWheelModule br = makeWheelModule(ABRPORT, DBRPORT, new Translation2d(-DRIVE_Y_BACK_TRANSLATION, -DRIVE_X_TRANSLATION ), true, true,false, 1, .8);
-
-        return new OdometricSwerve(
-                new AHRSAngleGetterComponent(I2C.Port.kMXP),
-                fl,
-                fr,
-                bl,
-                br
-        );
-    }
-
+    /**
+     * Swerve Command
+     */
     public static class SwerveCommand extends CommandBase {
-        private OdometricSwerve swerve;
+        private Swerve swerve;
         private Joystick joystick;
         private ControllerInfo info;
+        private DashboardMessageDisplay messageDisplay;
     
         private PIDController angleAdjustmentController;
         public ControlMode controlMode;
@@ -475,11 +515,13 @@ public class Swerve {
     
         private double limitedSpeed = .75;
     
-        public SwerveCommand(OdometricSwerve swerve, Joystick joystick, ControllerInfo controllerInfo) {
+    
+        public SwerveCommand(Swerve swerve, Joystick joystick, ControllerInfo controllerInfo, DashboardMessageDisplay messageDisplay){
             this.swerve = swerve;
             this.joystick = joystick;
             info = controllerInfo;
-            controlMode = ControlMode.FieldCentric; // default control mode is field-centric
+            this.messageDisplay = messageDisplay;
+            controlMode = ControlMode.FieldCentric; //default control mode is field-centric
             angleAdjustmentController = new PIDController(1,0,0);
             angleAdjustmentController.enableContinuousInput(-Math.PI, Math.PI);
             addRequirements(swerve);
@@ -516,10 +558,10 @@ public class Swerve {
             }
         }
     
-        private void moveFieldCentric(double x, double y, double w) {
+        private void moveFieldCentric(double x, double y, double w){
             swerve.moveFieldCentric(y,x,w);
         }
-        private void moveRobotCentric(double x, double y, double w) {
+        private void moveRobotCentric(double x, double y, double w){
             swerve.moveRobotCentric(y,x,w);
         }
         private void moveAlign(double r, double t, double w) {
@@ -534,7 +576,7 @@ public class Swerve {
                 return value;
         }
     
-        public enum ControlMode{
+        public enum ControlMode {
             FieldCentric,
             RobotCentric,
             AlignToAngle
@@ -545,33 +587,6 @@ public class Swerve {
                 return maximum * Math.signum(value);
             }
             return value;
-        }
-
-        /* Balancing */
-
-        public static class BalanceCommmand extends CommandBase {
-
-            private OdometricSwerve swerve;
-            private SwerveCommand swerveCommand;
-            private AHRSAngleGetterComponent gyro = new AHRSAngleGetterComponent(I2C.Port.kMXP);
-
-            public BalanceCommmand(OdometricSwerve swerve, SwerveCommand swerveCommand) {
-                this.swerve = swerve;
-                this.swerveCommand = swerveCommand;
-                swerveCommand.controlMode = ControlMode.AlignToAngle; 
-                swerveCommand.targetAngle = 0;
-                addRequirements(swerve);
-            }
-
-            public void execute() {
-                while (Math.abs(gyro.getPitch()) > Math.toRadians(2)){ //getPitch() returns the angle in radians, not degrees
-                    swerveCommand.moveRobotCentric((Math.toDegrees(gyro.getPitch())-2)/10,0.0,0.0);
-                }
-                swerveCommand.moveRobotCentric(0,0,0);
-            }
-            public void initSendable(SendableBuilder builder){
-                builder.addDoubleProperty("Robot Pitch", gyro::getPitch,null);
-            }
         }
     
         public void initSendable(SendableBuilder builder){
